@@ -113,3 +113,57 @@
         (get total-amount schedule)
         (/ (* (get total-amount schedule) elapsed) (get duration schedule))))))
 
+;; Release vested tokens
+(define-public (release-vested-tokens 
+    (beneficiary principal)
+)
+  (let 
+    (
+      ;; Get the vesting schedule for this beneficiary
+      (schedule 
+        (unwrap! 
+          (map-get? vesting-schedules { beneficiary: beneficiary }) 
+          (err u106)
+        )
+      )
+      ;; Calculate the total amount vested so far
+      (vested-amount 
+        (get-vested-amount schedule)
+      )
+    )
+    (begin
+      ;; Verify there are new tokens to release
+      (asserts! 
+        (> vested-amount (get released-amount schedule)) 
+        (err u107)
+      )
+      
+      ;; Calculate the amount to release in this transaction
+      (let 
+        (
+          (release-amount 
+            (- vested-amount (get released-amount schedule))
+          )
+        )
+        (begin
+          ;; Transfer the tokens to the beneficiary
+          (try! 
+            (as-contract 
+              (transfer release-amount tx-sender beneficiary)
+            )
+          )
+          
+          ;; Update the vesting schedule with new released amount
+          (map-set vesting-schedules
+            { beneficiary: beneficiary }
+            (merge schedule { released-amount: vested-amount })
+          )
+          
+          ;; Return the amount that was released
+          (ok release-amount)
+        )
+      )
+    )
+  )
+)
+
